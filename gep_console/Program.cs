@@ -2,6 +2,7 @@ using Pgep;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using Table;
 using TableCsv;
 using TableExtension;
@@ -43,73 +44,181 @@ public class TestFitness : IFitnessFunction
     }
 }
 
-
+public class IndexListRange : ITestCaseRange
+{
+    public IndexListRange(IReadOnlyList<int> indices)
+    {
+        _indices = indices ?? throw new ArgumentNullException(nameof(indices));
+    }
+    public int Count()
+    {
+        return _indices.Count;
+    }
+    public int this[int i]
+    {
+        get
+        {
+            if (i < 0 || i >= _indices.Count)
+            {
+                throw new Exception("Index out of range (IndexListRange)");
+            }
+            return _indices[i];
+        }
+    }
+    private readonly IReadOnlyList<int> _indices;
+}
 
 class Program
 {
-    static IList<double> KarvaSPXLoad(SymbolLibraryBuilder sb, out IReadOnlyList<string> date)
+    const string ExtractPath = @"D:\predict\index_extract.csv";
+
+    static List<T> TakeAt<T>(IList<T> src, List<int> idx)
     {
-        //
-        // Load Csv - convert all fields to the correct types
+        var dest = new List<T>(idx.Count);
+        for (int k = 0; k < idx.Count; k++)
+        {
+            dest.Add(src[idx[k]]);
+        }
+        return dest;
+    }
+
+    static bool SameQqqOhlcv(IList<double> o, IList<double> l, IList<double> h, IList<double> c, IList<double> v, int i, int j)
+    {
+        return o[i] == o[j] && l[i] == l[j] && h[i] == h[j] && c[i] == c[j] && v[i] == v[j];
+    }
+
+    static int DateYear(string d)
+    {
+        if (DateTime.TryParse(d, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
+        {
+            return dt.Year;
+        }
+        if (!string.IsNullOrEmpty(d) && d.Length >= 4 && int.TryParse(d.Substring(0, 4), NumberStyles.None, CultureInfo.InvariantCulture, out var y))
+        {
+            return y;
+        }
+        return -1;
+    }
+
+    static void AddIfPresent(SymbolLibraryBuilder sb, IDynamicTable table, List<int> cashIdx, string colName, List<string> featureNames)
+    {
+        if (!table.columns.ColumnExists(colName))
+        {
+            Console.WriteLine($"Feature skipped (not in extract): {colName}");
+            return;
+        }
+        sb.AddVariable(colName, TakeAt(table.AsList<double>(colName), cashIdx));
+        featureNames.Add(colName);
+    }
+
+    static IList<double> KarvaSPXLoad(SymbolLibraryBuilder sb, out IReadOnlyList<string> date, out IndexListRange trainRange, out IndexListRange unseenRange)
+    {
+        // Extract-only cash sessions. Do not load index_extract_ta.csv. Do not AddVariable qqq_yield_la1.
         var attr = new DefaultFieldAttributes();
         attr.SetDefault(TypeCode.Double);
         attr.Add(new Field("Date", TypeCode.String, true));
+        // Empty surprise cells break double.Parse; those columns are not features.
+        attr.Add(new Field("evt_cpi_surprise", TypeCode.String));
+        attr.Add(new Field("evt_fomc_surprise", TypeCode.String));
+
         IDynamicTable extractTable = new DynamicTable();
-        extractTable.LoadCsv(@"d:\predict\index_extract_ta.csv", CsvHeaderType.Header, null, attr);
+        extractTable.LoadCsv(ExtractPath, CsvHeaderType.Header, null, attr);
 
-        date = extractTable.AsList<string>("Date").AsReadOnly();
+        Console.WriteLine($"Loaded extract: {ExtractPath}");
+        Console.WriteLine($"Extract rows: {extractTable.rows.Count}");
 
-        var qqq_open = extractTable.AsList<double>("qqq_open").AsReadOnly();
-        var qqq_low = extractTable.AsList<double>("qqq_low").AsReadOnly();
-        var qqq_high = extractTable.AsList<double>("qqq_high").AsReadOnly();
-        var qqq_close = extractTable.AsList<double>("qqq_close").AsReadOnly();
-        var qqq_vol = extractTable.AsList<double>("qqq_vol").AsReadOnly();
-        var qqq_ema9 = extractTable.AsList<double>("qqq_ema9").AsReadOnly();
-        var qqq_ema20 = extractTable.AsList<double>("qqq_ema20").AsReadOnly();
-        var qqq_ema50 = extractTable.AsList<double>("qqq_ema50").AsReadOnly();
-        var qqq_slope9 = extractTable.AsList<double>("qqq_slope9").AsReadOnly();
-        var qqq_slope20 = extractTable.AsList<double>("qqq_slope20").AsReadOnly();
-        var qqq_slope50 = extractTable.AsList<double>("qqq_slope50").AsReadOnly();
-        var qqq_rsi14 = extractTable.AsList<double>("qqq_rsi14").AsReadOnly();
-        var qqq_adx14 = extractTable.AsList<double>("qqq_adx14").AsReadOnly();
-        var qqq_volatility20 = extractTable.AsList<double>("qqq_volatility20").AsReadOnly();
-        var qqq_macd_hist26_12_9 = extractTable.AsList<double>("qqq_macd_hist26_12_9").AsReadOnly();
-        var qqq_macd_signal26_12_9 = extractTable.AsList<double>("qqq_macd_signal26_12_9").AsReadOnly();
-        var qqq_bollinger_width20_2 = extractTable.AsList<double>("qqq_bollinger_width20_2").AsReadOnly();
-        var qqq_bollinger_pos20_2 = extractTable.AsList<double>("qqq_bollinger_pos20_2").AsReadOnly();
-        var qqq_support = extractTable.AsList<double>("qqq_support").AsReadOnly();
-        var qqq_support_strength = extractTable.AsList<double>("qqq_support_strength").AsReadOnly();
-        var qqq_resistance = extractTable.AsList<double>("qqq_resistance").AsReadOnly();
-        var qqq_resistance_strength = extractTable.AsList<double>("qqq_resistance_strength").AsReadOnly();
-        var qqq_yield = extractTable.AsList<double>("qqq_yield").AsReadOnly();
-        var qqq_yield_la1 = extractTable.AsList<double>("qqq_yield_la1").AsReadOnly();
+        var rawDate = extractTable.AsList<string>("Date");
+        var qqqOpen = extractTable.AsList<double>("qqq.Open");
+        var qqqLow = extractTable.AsList<double>("qqq.Low");
+        var qqqHigh = extractTable.AsList<double>("qqq.High");
+        var qqqClose = extractTable.AsList<double>("qqq.Close");
+        var qqqVol = extractTable.AsList<double>("qqq.Volume");
 
-        sb.AddVariable("qqq_ema9", qqq_ema9);
-        sb.AddVariable("qqq_ema20", qqq_ema20);
-        sb.AddVariable("qqq_ema50", qqq_ema50);
-        sb.AddVariable("qqq_slope9", qqq_slope9);
-        sb.AddVariable("qqq_slope20", qqq_slope20);
-        sb.AddVariable("qqq_slope50", qqq_slope50);
-        sb.AddVariable("qqq_rsi14", qqq_rsi14);
-        sb.AddVariable("qqq_adx14", qqq_adx14);
-        sb.AddVariable("qqq_volatility20", qqq_volatility20);
-        sb.AddVariable("qqq_macd_hist26_12_9", qqq_macd_hist26_12_9);
-        sb.AddVariable("qqq_macd_signal26_12_9", qqq_macd_signal26_12_9);
-        sb.AddVariable("qqq_bollinger_width20_2", qqq_bollinger_width20_2);
-        sb.AddVariable("qqq_bollinger_pos20_2", qqq_bollinger_pos20_2);
-        sb.AddVariable("qqq_support", qqq_support);
-        sb.AddVariable("qqq_support_strength", qqq_support_strength);
-        sb.AddVariable("qqq_resistance", qqq_resistance);
-        sb.AddVariable("qqq_resistance_strength", qqq_resistance_strength);
-        sb.AddVariable("qqq_yield", qqq_yield);
-        sb.AddVariable("qqq_yield_la1", qqq_yield_la1);
+        var cashIdx = new List<int>();
+        int nRows = extractTable.rows.Count;
+        for (int i = 0; i < nRows; i++)
+        {
+            if (i > 0 && SameQqqOhlcv(qqqOpen, qqqLow, qqqHigh, qqqClose, qqqVol, i, i - 1))
+            {
+                continue;
+            }
+            cashIdx.Add(i);
+        }
 
-        var y = qqq_yield_la1;
+        Console.WriteLine($"Cash sessions: {cashIdx.Count} (dropped {nRows - cashIdx.Count} QQQ OHLCV copies of prior row)");
 
+        var dates = TakeAt(rawDate, cashIdx);
+        var close = TakeAt(qqqClose, cashIdx);
+        int n = close.Count;
+
+        var yieldSame = new double[n];
+        var y = new double[n];
+        for (int i = 0; i < n; i++)
+        {
+            yieldSame[i] = (i == 0 || close[i - 1] == 0.0 || double.IsNaN(close[i]) || double.IsNaN(close[i - 1]))
+                ? double.NaN
+                : close[i] / close[i - 1] - 1.0;
+            y[i] = (i == n - 1 || close[i] == 0.0 || double.IsNaN(close[i]) || double.IsNaN(close[i + 1]))
+                ? double.NaN
+                : close[i + 1] / close[i] - 1.0;
+        }
+
+        var featureNames = new List<string>();
+        sb.AddVariable("qqq.Open", TakeAt(qqqOpen, cashIdx));
+        featureNames.Add("qqq.Open");
+        sb.AddVariable("qqq.Low", TakeAt(qqqLow, cashIdx));
+        featureNames.Add("qqq.Low");
+        sb.AddVariable("qqq.High", TakeAt(qqqHigh, cashIdx));
+        featureNames.Add("qqq.High");
+        sb.AddVariable("qqq.Close", close);
+        featureNames.Add("qqq.Close");
+        sb.AddVariable("qqq.Volume", TakeAt(qqqVol, cashIdx));
+        featureNames.Add("qqq.Volume");
+        sb.AddVariable("qqq.Yield", yieldSame);
+        featureNames.Add("qqq.Yield");
+
+        AddIfPresent(sb, extractTable, cashIdx, "vix.Close", featureNames);
+        AddIfPresent(sb, extractTable, cashIdx, "vix1y.Close", featureNames);
+        AddIfPresent(sb, extractTable, cashIdx, "vix6m.Close", featureNames);
+        AddIfPresent(sb, extractTable, cashIdx, "evt_cpi", featureNames);
+        AddIfPresent(sb, extractTable, cashIdx, "evt_fomc", featureNames);
+        AddIfPresent(sb, extractTable, cashIdx, "evt_opex", featureNames);
+        AddIfPresent(sb, extractTable, cashIdx, "macro_cpi_yoy", featureNames);
+        AddIfPresent(sb, extractTable, cashIdx, "macro_unemp", featureNames);
+        AddIfPresent(sb, extractTable, cashIdx, "macro_real_rate", featureNames);
+
+        Console.WriteLine("Features: " + string.Join(", ", featureNames));
+        Console.WriteLine("Target: next cash-session yield (close[i+1]/close[i]-1). No qqq_yield_la1. No TA.");
+
+        var train = new List<int>();
+        var unseen = new List<int>();
+        for (int i = 0; i < n; i++)
+        {
+            if (double.IsNaN(yieldSame[i]) || double.IsNaN(y[i]))
+            {
+                continue;
+            }
+            int year = DateYear(dates[i]);
+            if (year == 2022)
+            {
+                unseen.Add(i);
+            }
+            else
+            {
+                train.Add(i);
+            }
+        }
+
+        trainRange = new IndexListRange(train);
+        unseenRange = new IndexListRange(unseen);
+        Console.WriteLine($"Train cases (year != 2022, has yield and target): {train.Count}");
+        Console.WriteLine($"Unseen cases (year == 2022, has yield and target): {unseen.Count}");
+
+        date = dates.AsReadOnly();
         return y;
     }
 
-    static void PrintPrediction(Chromosome chrom, IReadOnlyList<string> dte, IList<double> expected, TestCaseRange tc)
+    static void PrintPrediction(Chromosome chrom, IReadOnlyList<string> dte, IList<double> expected, ITestCaseRange tc)
     {
         Console.WriteLine("Expected\tPredicted");
         for (int i = 0; i < tc.Count(); i++)
@@ -137,7 +246,7 @@ class Program
         var symb = SymbolLibraryBuilder.Create(psl);
 
         IReadOnlyList<string> date;
-        var y = KarvaSPXLoad(symb, out date);
+        var y = KarvaSPXLoad(symb, out date, out var testCaseRange, out var unseen);
 
         var syms = symb.Build();
 
@@ -172,17 +281,13 @@ class Program
         population.Initialize(ppi);
 
         // =============================================================
-        //        var testCaseRange = new TestCaseRange(0, y.Count);
-        //        var testCaseRange = new TestCaseRange(2000, 350);
-        var testCaseRange = new TestCaseRange(y.Count - 1020, 1000);
         var decoder = new KarvaDecoder(syms.Symbols);
-        var unseen = new TestCaseRange(y.Count - 20, 20);
 
         // =============================================================
         var pr = new ParmsRunner()
         {
             FitnessThreshold = 1.0,
-            MaxGenerations = 100000
+            MaxGenerations = 1000
         };
         var pe = new ParmsEvolution()
         {
