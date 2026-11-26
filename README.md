@@ -76,3 +76,7 @@ Without that sibling checkout, `dotnet build gep_console/gep_console.slnx` fails
 ## Tests
 
 There is no test project. Without DynamicTable, `dotnet test gep_console/gep_console.slnx` fails on the missing projects. With DynamicTable present it exits 0 and still runs no suite.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
