@@ -1,3 +1,8 @@
+---
+description: Gene Expression Programming architecture, genome contracts, pooling, evaluation, and operators
+alwaysApply: true
+---
+
 # Architecture
 
 **Purpose**  
@@ -8,8 +13,8 @@ Applies to the `Pgep` library and its host console application. Read this file b
 
 **Companion documents**
 
-- `AGENTS.md` — agent workflow and non-negotiable process rules
-- `coding-standards.md` — C# style, member ordering, braces, and BCL-only library policy
+- `AGENTS.md` (repository root) — what this repo is, how to build and run it, and what not to change
+- `.cursor/rules/coding-standards.mdc` — C# style, member ordering, braces, and BCL-only library policy
 
 ---
 
@@ -31,7 +36,9 @@ The engine is a **class library**. Experiments, CSV loading, and console reporti
 
 ```
 GeneExpressionProgramming/
-├── .grok/rules/          Agent and architecture rules (this file lives here)
+├── .cursor/rules/        Cursor agent rules (coding standards and this file)
+├── AGENTS.md             Build, layout, dependencies, and agent limits
+├── README.md             Short repository overview
 ├── Pgep/                 Core GEP library (no I/O, no host data formats)
 └── gep_console/          Console host / experiment runner
 ```
@@ -101,7 +108,7 @@ Do not collapse these into one mega-options class. When adding a knob, put it on
 | Type | Role |
 |------|------|
 | `SymbolType` | `Function`, `Variable`, `Constant` |
-| `ISymbol` | `Name`, `Arity`, `Type`, `Evaluate(double[] args, int caseIndex)` |
+| `ISymbol` | `Name`, `Arity`, `Type`, and `Evaluate` (`Func<double[], int, double>`) |
 | `Function` / `Variable` / `Constant` | Concrete symbols |
 | `PredefinedLibrary` | Flags: `BasicArithmetic`, `Trigonometric`, `Logical`, `Conditional`, `Neural` |
 | `SymbolLibraryBuilder` | Mutable builder; enforces unique names and equal variable case counts |
@@ -385,7 +392,7 @@ The fitness inner loop is `populationSize × testCases × genes × ORF length`. 
 
 ## 13. Coding Shape (Pgep)
 
-Follow `coding-standards.md`. In this library that specifically means:
+Follow `.cursor/rules/coding-standards.mdc`. In this library that specifically means:
 
 - Member order: constructors → public members → `#region protected` → `#region private`
 - Braces on every block
