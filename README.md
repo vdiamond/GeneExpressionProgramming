@@ -2,9 +2,11 @@
 
 C# library for Gene Expression Programming (Ferreira). Individuals are linear **Karva** chromosomes: each gene is a fixed-length K-expression that decodes to an expression tree, and a linking function combines the genes on a chromosome. `gep_console` is a console host with symbolic-regression samples and a QQQ cash-session experiment.
 
+Agent guidance: [AGENTS.md](AGENTS.md).
+
 ## Status
 
-`Pgep` builds. The console host does not build from this repository alone: `gep_console` references three **DynamicTable** projects that are not in this tree. There is no test project and no CI configuration.
+`Pgep` builds on its own. The console host does not build from this repository alone: `gep_console` references three **DynamicTable** projects that are not in this tree. Clone [DynamicTable](https://github.com/vdiamond/DynamicTable) next to this repo and the console project compiles. There is no test project and no CI configuration.
 
 `gep_console/Program.Main` calls `KarvaSPX()` only. These self-contained samples are in `Program.cs` and are commented out:
 
@@ -25,9 +27,8 @@ Checked with the .NET SDK **10.0.404**.
 
 ```
 .gitignore
-.grok/rules/AGENTS.md
-.grok/rules/architecture.md
-.grok/rules/coding-standards.md
+AGENTS.md                     build, dependencies, and agent limits
+.cursor/rules/                coding-standards.mdc, architecture.mdc
 Pgep/                         class library, namespace Pgep
   Chromosome.cs               Gene, Chromosome, ChromosomePool
   GeneticOperations.cs
@@ -59,17 +60,14 @@ Build the library. This succeeds. `Pgep/Selection.cs` reports warning **CS8600**
 dotnet build Pgep/Pgep.csproj
 ```
 
-Build the solution. In this checkout it **fails** with MSB3202: the three DynamicTable project files are not found (`/DynamicTable/Table/Table/Table.csproj`, and the `TableCsv` and `TableExtension` projects).
+Build the solution and run the host after DynamicTable is cloned next to this repo. Both commands then compile. `dotnet run` starts `KarvaSPX()` and throws `FileNotFoundException` because `D:\predict\index_extract.csv` is not in the repository.
 
 ```bash
 dotnet build gep_console/gep_console.slnx
-```
-
-Run the host. In this checkout it **fails** for the same missing references (`Table`, `TableCsv`, `TableExtension`, `IDynamicTable`). The process does not reach `Main`.
-
-```bash
 dotnet run --project gep_console/gep_console.csproj
 ```
+
+Without that sibling checkout, `dotnet build gep_console/gep_console.slnx` fails with MSB3202 (the three project files are missing), and `dotnet run --project gep_console/gep_console.csproj` fails with CS0246 for `Table`, `TableCsv`, `TableExtension`, and `IDynamicTable`. The process does not reach `Main`.
 
 `dotnet build` and `dotnet test` with no project, run from the repository root, fail with MSB1003. The root directory has no project or solution file.
 
@@ -77,4 +75,4 @@ dotnet run --project gep_console/gep_console.csproj
 
 ## Tests
 
-There is no test project. `dotnet test gep_console/gep_console.slnx` fails on the missing DynamicTable projects and does not run a suite.
+There is no test project. Without DynamicTable, `dotnet test gep_console/gep_console.slnx` fails on the missing projects. With DynamicTable present it exits 0 and still runs no suite.
