@@ -4,7 +4,7 @@
 This document defines the coding standards for our .NET codebase. All code — whether written by humans or AI agents — must follow these rules to produce production-quality, robust, performant, and maintainable software.
 
 **Scope**  
-Applies to all new code and refactored code. Legacy code should be brought into compliance when touched.
+Applies to new code in this repository. Do not reformat an existing file only to add braces, regions, or XML comments.
 
 **For AI Agents**  
 When writing, reviewing, or refactoring C#/.NET code, you **must** follow every rule in this document. Prioritize correctness, robustness, readability, and long-term maintainability.
@@ -13,41 +13,43 @@ When writing, reviewing, or refactoring C#/.NET code, you **must** follow every 
 
 ## 1. Target Framework & Tooling
 
-- Target the **latest stable .NET version** or **latest stable - 1**.
-- Use the **latest stable C# language version**.
-- Enable **Nullable Reference Types** (`<Nullable>enable</Nullable>`) in all projects.
-- Use a shared `.editorconfig` at the repository root.
-- Treat warnings as errors in Release builds and CI.
+- Both projects target **`net10.0`** (`Pgep/Pgep.csproj` and `gep_console/gep_console.csproj`). Do not retarget them.
+- There is no `LangVersion` override. The compiler language version is the SDK default for `net10.0`.
+- Nullable reference types and implicit usings are already enabled in both projects.
+- There is no `.editorconfig`, no `Directory.Build.props`, and no CI workflow. Do not add them unless asked.
+- Warnings are not treated as errors. `dotnet build Pgep/Pgep.csproj` succeeds with CS8600 in `Pgep/Selection.cs`.
 
 ---
 
 ## 2. General Design Principles
 
 - **Robustness first**: Code must handle invalid input, nulls, and edge cases defensively.
-- **Immutability preferred**: Favor records, readonly record structs, and init-only properties.
+- **Immutability where the code already uses it.** `Parms*` types, genes, and chromosomes are mutable by design. Do not convert `Parms*` classes to records or init-only types unless a refactor is requested (`architecture.md`).
 - **Composition over inheritance**.
 - **Fail fast** with clear, meaningful exceptions or result types.
 - Keep methods small and focused.
 - Avoid magic strings and numbers.
-- **No external libraries** unless explicitly called out in the design or requested by the user. Stick to the .NET Base Class Library (BCL) and Microsoft.Extensions packages that are already part of the project.
+- **No NuGet packages** unless the user asks. Neither project has a `PackageReference`. `Pgep` stays on the BCL. `gep_console` already references `Pgep` and the sibling DynamicTable projects; do not add a DynamicTable reference to `Pgep`. There are no Microsoft.Extensions packages in this repo.
 
 ---
 
 ## 3. Naming Conventions
 
+Examples below are types and members in this repository. `KarvaDecoder` lives in `KarvaEvaluator.cs`; do not rename that file unless asked. Several library files hold more than one type (`Parameters.cs`, `Chromosome.cs`, `Population.cs`, `SymbolLibrary.cs`).
+
 | Element              | Convention                          | Example                              |
 |----------------------|-------------------------------------|--------------------------------------|
-| Classes / Records    | PascalCase                          | `OrderService`, `UserCreatedEvent`   |
-| Interfaces           | `I` + PascalCase                    | `IOrderRepository`                   |
-| Methods              | PascalCase (verb + noun)            | `GetUserByIdAsync`, `CalculateTotal` |
-| Properties           | PascalCase                          | `FirstName`, `IsActive`              |
-| Private fields       | `_camelCase`                        | `_userRepository`                    |
-| Local variables      | `camelCase`                         | `userId`, `orderTotal`               |
-| Constants            | PascalCase                          | `MaxRetryCount`                      |
-| File names           | Match primary type                  | `UserService.cs`                     |
+| Classes              | PascalCase                          | `ChromosomePool`, `RegressionFitness` |
+| Interfaces           | `I` + PascalCase                    | `ISymbol`, `IFitnessFunction`        |
+| Methods              | PascalCase (verb + noun)            | `Evaluate`, `AddVariable`            |
+| Properties           | PascalCase                          | `HeadLength`, `Fitness`              |
+| Private fields       | `_camelCase`                        | `_sequence`, `_fitnessFunction`      |
+| Local variables      | `camelCase`                         | `geneIndex`, `totalError`            |
+| Constants            | PascalCase                          | `ExtractPath`                        |
+| File names           | Match the primary type when practical | `Selection.cs`                     |
 
-- Use descriptive names. Avoid abbreviations except well-known ones (`Id`, `Db`).
-- Boolean properties should start with `Is`, `Has`, `Can`, or `Should`.
+- Use descriptive names. Short names already in the library (`Parms`, `syms`, `rng`, `idx`) stay as they are. Do not rename them in passing.
+- Boolean properties in new code should start with `Is`, `Has`, `Can`, or `Should`.
 
 ---
 
@@ -70,7 +72,7 @@ if (x > 0)
     throw new ArgumentException("x must be greater than zero");
 ```
 
-This rule applies to `if`, `else`, `for`, `foreach`, `while`, `do`, `switch`, `try`, `catch`, and `finally`.
+This rule applies to new `if`, `else`, `for`, `foreach`, `while`, `do`, `switch`, `try`, `catch`, and `finally` blocks. Existing guards in `Gene` and `GeneticOperations` sometimes omit braces. Do not reformat those unless you are already changing that statement.
 
 ### Never Use `goto`
 The `goto` statement is **forbidden** in all code.
@@ -126,41 +128,26 @@ This ordering and region usage must be followed consistently across the codebase
 
 ---
 
-## 6. Modern C# Language Features (Strongly Preferred)
+## 6. Language Features
 
-Use modern C# features aggressively:
+Match the code that is already here. `Parms*` types stay mutable classes with a parameterless constructor and settable properties. Do not introduce records, primary constructors, or `required`/`init` rewrites unless asked.
 
-- `record` and `readonly record struct` for DTOs and value objects.
-- Primary constructors.
-- Pattern matching and `switch` expressions.
-- `required` properties and `init` setters.
-- `nameof()` instead of magic strings.
-- Collection expressions and spread syntax.
-- `Span<T>` / `ReadOnlySpan<T>` in performance-sensitive code.
-- Full `async` / `await` usage for all I/O.
-- `using` declarations and statements for disposables.
-- `sealed` classes by default unless inheritance is required.
+The library already uses ordinary `switch` statements, `ArrayPool<T>` on the transposition path, and `Parallel.ForEach` for fitness. Prefer those over new framework features. There is no async I/O in this repo.
 
 ---
 
 ## 7. Error Handling & Resilience
 
 - Never swallow exceptions silently.
-- Use structured logging via `ILogger<T>`.
-- Prefer clear, specific exceptions (`ArgumentNullException`, `InvalidOperationException`, etc.).
-- Use `ArgumentNullException.ThrowIfNull()` and similar helpers.
-- Log at the appropriate level with sufficient context.
-- Implement retry or resilience logic manually when needed (do not introduce external resilience libraries unless explicitly approved).
+- This repo logs with `Console.WriteLine` (`Population.Run` and `gep_console`). Do not introduce `ILogger<T>`.
+- Prefer clear, specific exceptions (`ArgumentException`, `InvalidOperationException`). The existing code also throws `Exception` for a bad test-case index.
+- Do not add retry or resilience libraries. There is no external call to retry.
 
 ---
 
 ## 8. Asynchronous Programming
 
-- All I/O-bound work **must** be asynchronous.
-- Always accept and propagate `CancellationToken`.
-- Prefer `ValueTask<T>` when the operation frequently completes synchronously.
-- Never use `.Result` or `.Wait()`.
-- Use `ConfigureAwait(false)` appropriately in library code.
+`Pgep` and `gep_console` are synchronous. Fitness uses `Parallel.ForEach`. The host loads CSV through DynamicTable on the calling thread. Do not convert the evolution loop or the host to `async`/`CancellationToken` unless asked. If async is added later, do not block on `.Result` or `.Wait()`.
 
 ---
 
@@ -182,37 +169,28 @@ Use modern C# features aggressively:
 
 ---
 
-## 11. Dependency Injection
+## 11. Construction
 
-- Use constructor injection only.
-- Keep constructors simple.
-- Prefer small, focused interfaces (Interface Segregation).
-- Register services with appropriate lifetimes (`Scoped` is typical for web applications).
+There is no dependency-injection container and no generic host. Callers construct `Parms*` objects and pass them into `SymbolLibraryBuilder`, `ChromosomePool`, and `Population`. Do not add a service container.
 
 ---
 
 ## 12. Security
 
-- Validate all external input.
-- Never concatenate SQL or use string interpolation for queries.
-- Never store secrets in source code or committed configuration files.
-- Follow secure coding practices for authentication, authorization, and data protection.
+This repository has no database, authentication layer, or secret store. Do not add SQL, auth, or committed data files. The host extract path `D:\predict\index_extract.csv` stays a local path in `Program.cs`. Do not commit a copy of that extract.
 
 ---
 
 ## 13. Testing
 
-- Write meaningful tests for public behavior.
-- Use clear test naming: `MethodName_StateUnderTest_ExpectedBehavior`.
-- Follow Arrange-Act-Assert pattern.
-- Mock only what is necessary.
+There is no test project. `dotnet test` is not wired up. Do not add a test project unless asked. If tests are added later, put them in a separate project (not inside `Pgep`), name them `MethodName_StateUnderTest_ExpectedBehavior`, and use Arrange-Act-Assert.
 
 ---
 
 ## 14. Documentation & Comments
 
 - Write self-documenting code as the primary goal.
-- Use XML documentation (`///`) on all public APIs.
+- Add XML documentation when you add a public type or method. Today only `KarvaDecoder` has it. Do not backfill the rest unless asked.
 - Add comments only to explain *why*, not *what*.
 - Keep comments current — remove outdated ones.
 
@@ -228,6 +206,6 @@ When rules appear to conflict, apply this priority:
 
 ---
 
-**Last Updated**: July 2026  
-**Review Cadence**: Update this document when new language features or team decisions require it.
-**Version**: 1.0
+**Last Updated**: November 2026  
+**Review Cadence**: Update this document when the project targets or the public contracts change.
+**Version**: 1.1
