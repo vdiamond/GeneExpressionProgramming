@@ -1,121 +1,60 @@
 # AGENTS.md
 
-**Critical: Read this file and `.grok/rules/coding-standards.md` before making any changes.**
+Repo-specific instructions. Genome, pooling, and operator contracts are in `.grok/rules/architecture.md`. C# style is in `.grok/rules/coding-standards.md`.
 
----
+## What this repo is
 
-## 1. Core Instructions for AI Agents
+Gene Expression Programming library (`Pgep`, namespace `Pgep`) with Karva chromosomes, plus the console host `gep_console`. Both target `net10.0` (`Nullable` and `ImplicitUsings` enabled). `Pgep` has no package references and no project references. The host references `Pgep` and three sibling DynamicTable projects that are not in this repository. `Main` runs `KarvaSPX()`. `KarvaTest1`, `KarvaTest2`, and `KarvaTest3` are commented out.
 
-You **must** follow these rules on every task:
-
-1. **Read the standards first**
-   - Always read `.grok/rules/coding-standards.md` before writing or modifying any C#/.NET code.
-   - Always read `.grok/rules/architecture.md` before changing GEP structure, chromosome/gene contracts, symbol libraries, pooling, evaluation, fitness, or evolutionary operators.
-   - Follow both strictly (especially member ordering, braces rule, no `goto`, no unauthorized external libraries, and the genome/pooling invariants in `architecture.md`).
-
-2. **Production Quality Mindset**
-   - Prioritize **robustness**, **correctness**, and **maintainability** over cleverness or micro-optimizations.
-   - Write code that is safe, defensive, and easy to understand six months from now.
-   - Fail fast with clear errors when something is wrong.
-
-3. **No External Libraries**
-   - Do **not** introduce new NuGet packages or external libraries unless explicitly requested or already approved in the design.
-   - Stick to the .NET BCL and existing Microsoft.Extensions packages in the solution.
-
----
-
-## 2. Technology Stack
-
-- **Language**: C# (latest stable or latest stable - 1)
-- **Platform**: .NET (latest stable or latest stable - 1)
-- **Nullable Reference Types**: Enabled in all projects
-- **Architecture**: Hybrid Vertical Slice / Clean Architecture
-- **Primary Patterns**: Constructor injection, records for DTOs/value objects, async/await for I/O
-
----
-
-## 3. Development Workflow
-
-### Before Writing Code
-- Understand the existing structure and patterns in the codebase.
-- Check for similar implementations before creating new ones.
-- Prefer extending or improving existing code over duplicating logic.
-
-### When Making Changes
-- Follow the exact member ordering defined in `.grok/rules/coding-standards.md`.
-- Always use braces for code blocks, even single-line statements.
-- Use modern C# features (records, primary constructors, pattern matching, etc.).
-- Keep methods small and focused.
-- Add or update XML documentation on public APIs when appropriate.
-
-### Testing & Validation
-- After making changes that affect behavior, **run the relevant tests**.
-- Prefer adding or updating tests when modifying logic.
-- Never suggest changes that would break existing tests without good reason.
-
-### Build & Test Commands
-
-Use these commands (adjust paths as needed for your solution):
+## Build and run
 
 ```bash
-# Build the entire solution
-dotnet build
-
-# Run all tests
-dotnet test
-
-# Run tests for a specific project
-dotnet test MyProject.Tests/
-
-# Run with coverage (if configured)
-dotnet test --collect:"XPlat Code Coverage"
+dotnet build Pgep/Pgep.csproj
 ```
 
-- Always verify that `dotnet build` succeeds with no warnings before considering a change complete.
+That command succeeds. Warning CS8600 in `Pgep/Selection.cs` (`Chromosome best = null`). Warnings are not errors. There is no CI.
 
----
+```bash
+dotnet build gep_console/gep_console.slnx
+dotnet run --project gep_console/gep_console.csproj
+```
 
-## 4. Error Handling & Logging
+Both fail in this checkout. The solution and `gep_console.csproj` reference:
 
-- Use structured logging via `ILogger<T>`.
-- Throw specific, meaningful exceptions.
-- Never swallow exceptions silently.
-- Propagate `CancellationToken` in all async methods.
+- `../../DynamicTable/Table/Table/Table.csproj`
+- `../../DynamicTable/TableCsv/TableCsv/TableCsv.csproj`
+- `../../DynamicTable/TableExtension/TableExtension/TableExtension.csproj`
 
----
+Those files are absent, so the host never starts. Do not satisfy the references by moving CSV or table code into `Pgep`.
 
-## 5. Git & Change Management
+`dotnet build` and `dotnet test` at the repository root fail with MSB1003. There is no solution file there.
 
-- Make focused, atomic changes.
-- Write clear commit messages that explain *why* the change was made.
-- Group related changes logically.
-- Do not commit generated files, secrets, or build artifacts.
+## Tests
 
----
+There is no test project. Do not add one unless asked. Do not run `dotnet test MyProject.Tests/` or a coverage collector. Nothing is configured.
 
-## 6. When to Ask for Clarification
+## Conventions in this code
 
-Ask before proceeding if:
-- The request is ambiguous or could be interpreted in multiple ways.
-- A change would require introducing a new external library.
-- You're unsure about the architectural direction or existing patterns.
-- The task involves significant refactoring of core components.
+- Several types share a file. `Parameters.cs` holds every `Parms*` type. `Chromosome.cs` holds `Gene`, `Chromosome`, and `ChromosomePool`. `Population.cs` holds `Population`, `IFitnessFunction`, `RegressionFitness`, `ITestCaseRange`, and `TestCaseRange`. `SymbolLibrary.cs` holds the symbol types and the builder.
+- `Parms*` types are mutable classes: a public parameterless constructor, then public settable properties with defaults. They are not records.
+- Private fields are `_camelCase` and usually sit in `#region private` after the public members. Some builders use `#region internal`.
+- Interfaces use an `I` prefix (`ISymbol`, `IFitnessFunction`, `ITestCaseRange`).
+- Properties are often written as `get { return _field; }` blocks.
+- Most blocks use braces. A few guards do not (`if (headLength < 1) throw ...` on `Gene`, early `return` in `GeneticOperations`).
+- `GeneticOperations` and `Selection` are static classes. Operators write into the live `int[][]` and `double[][]` gene storage.
+- Fitness is higher-is-better. `RegressionFitness` returns `1 / (1 + MSE)`, or `0` when the range is empty or the score is not finite.
+- `Population.Run` prints with `Console.WriteLine`. There is no `ILogger` and no dependency-injection container.
+- Evaluation is `Gene.Evaluate` / `Chromosome.Evaluate`. `KarvaDecoder` only formats text, and the type lives in `KarvaEvaluator.cs`.
+- `Program`, `TestFitness`, and `IndexListRange` are in the global namespace in `gep_console/Program.cs`.
+- XML comments exist on `KarvaDecoder` and are otherwise rare.
 
----
+## What not to touch
 
-## 7. Additional Rule Files
-
-This project may contain additional rule files in `.grok/rules/`:
-
-- `coding-standards.md` ← **Primary C# style reference** (read this first)
-- `architecture.md` ← **GEP layering, genome contracts, pooling, evaluation, and operator rules**
-- Other domain-specific rules
-
-Always check the `.grok/rules/` directory for the latest guidance.
-
----
-
-**Remember**: Your goal is to produce clean, robust, production-ready C# code that follows the standards defined in this repository.
-
-_Last Updated: July 2026_
-_Version: 1.0_
+- Head/tail layout (`tail = head * (maxArity - 1) + 1`), terminal-only tails, symbol order (functions, then variables, then constants), and the `ISymbol.Evaluate` argument convention. `Gene.Evaluate` and `KarvaDecoder` must keep the same open reading frame.
+- Per-gene constant arrays and the fixed shape of `ChromosomePool`. Do not share one constant array across genes.
+- Do not add NuGet packages. Do not give `Pgep` a reference to DynamicTable, CSV, or other file I/O.
+- Do not merge the `Parms*` types into one options object, and do not turn them into records unless a refactor is requested.
+- Do not call `Selection.RouletteWheel` from `Evolve`. It returns a uniform random chromosome, not a fitness-proportional pick.
+- Do not add a second genome encoding beside Karva.
+- Leave these alone unless asked: console output inside `Population.Run`, the `KarvaEvaluator.cs` file name, `RouletteWheel`, and the missing `Population.Release()` call in the host.
+- In `KarvaSPXLoad`, do not load `index_extract_ta.csv` and do not `AddVariable` `qqq_yield_la1`. The next cash-session yield is the target, not a feature.
